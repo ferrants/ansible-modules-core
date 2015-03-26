@@ -68,6 +68,12 @@ options:
     required: false
     version_added: "1.8"
     default: 1
+  replace_batch_wait:
+    description:
+      - Number of seconds to wait between each batch. Used with replace_all_instances.
+    required: false
+    version_added: "2.0"
+    default: 0
   replace_instances:
     description:
       - List of instance_ids belonging to the named ASG that you would like to terminate and be replaced with instances matching the current launch configuration.
@@ -546,6 +552,7 @@ def update_size(group, max_size, min_size, dc):
 
 def replace(connection, module):
     batch_size = module.params.get('replace_batch_size')
+    batch_wait_time = module.params.get('replace_batch_wait')
     wait_timeout = module.params.get('wait_timeout')
     group_name = module.params.get('name')
     max_size =  module.params.get('max_size')
@@ -590,6 +597,7 @@ def replace(connection, module):
         max_size = as_group.max_size
     if desired_capacity is None:
         desired_capacity = as_group.desired_capacity
+
     # set temporary settings and wait for them to be reached
     # This should get overriden if the number of instances left is less than the batch size.
 
@@ -604,6 +612,8 @@ def replace(connection, module):
         instances = replace_instances
     log.debug("beginning main loop")
     for i in get_chunks(instances, batch_size):
+        if i[0] != instances[0]:
+            time.sleep(batch_wait_time)
         # break out of this loop if we have enough new instances
         break_early, desired_size, term_instances = terminate_batch(connection, module, i, instances, False)
         wait_for_term_inst(connection, module, term_instances)
@@ -783,6 +793,7 @@ def main():
             desired_capacity=dict(type='int'),
             vpc_zone_identifier=dict(type='list'),
             replace_batch_size=dict(type='int', default=1),
+            replace_batch_wait=dict(type='int', default=0),
             replace_all_instances=dict(type='bool', default=False),
             replace_instances=dict(type='list', default=[]),
             lc_check=dict(type='bool', default=True),
